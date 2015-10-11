@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <libgen.h>
 
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
@@ -45,7 +46,7 @@ void do_copy(struct file_s *src, struct file_s *dst)
 #endif
 	if (src == NULL||dst == NULL) return;
 #ifdef DEBUG
-	printf("'%s'->'%s'\n",src->path,dst->path);
+	printf("'%s'(%d)->'%s'(%d)\n",src->path,src->isdir,dst->path,dst->isdir);
 #endif
 	fd = open(src->path, O_RDONLY);
 	if (fd < 0) {
@@ -177,9 +178,53 @@ int main(int argc, char *argv[])
 		show_usage();
 	}
 
-	for (i=0; i<nsrc; ++i)
+	// dstがファイルかつsrcが複数でないとき
+	if (nsrc == 1)
 	{
-		do_copy(src[i],dst);
+#ifdef DEBUG
+		printf("src is single file\n");
+#endif
+		do_copy(src[0],dst);
+	}
+	else {
+		for (i=0; i<nsrc; ++i)
+		{
+			char *dst_filename;
+			// dstがディレクトリなら、dst_filename=dst_dir/basename(src_path)
+			if (dst->isdir == 1)
+			{
+#ifdef DEBUG
+				printf("dst is directory %s\n",dst->path);
+#endif
+				char *dirc, *basec, *bname, *dname;
+				char *tmp;
+				//dirc = strdup(src[i]->path);
+				basec = strdup(src[i]->path);
+				//dname = dirname(dirc);
+				bname = basename(basec);
+				int dst_filename_size = MIN(strlen(dst->path)+1+strlen(bname)+1,PATH_MAX);
+
+				// copy struct files*
+				struct file_s *dsttmp;
+				dsttmp = malloc(sizeof(struct file_s));
+				char dst_filename[PATH_MAX];
+				dsttmp->path = &dst_filename;
+				strncpy(dsttmp->path,dst->path,PATH_MAX);
+				dsttmp->isdir = dst->isdir;
+
+				char *pathdup = strdup(dsttmp->path);
+				snprintf(dsttmp->path,dst_filename_size,"%s/%s",pathdup,bname);
+				char dst_realpath[PATH_MAX];
+				realpath(dsttmp->path,&dst_realpath);
+				dsttmp->path = &dst_realpath;
+				free(pathdup); // strdup
+				free(basec); // strdup
+	
+				do_copy(src[i],dsttmp);
+				free(tmp); // realloc
+				free(dsttmp); // realloc
+			}
+		}
 	}
 	return 0;
 }
