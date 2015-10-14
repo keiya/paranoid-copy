@@ -13,11 +13,14 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <sys/mman.h>
 #include <libgen.h>
 
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
+#define OPEN_SRC 0
+#define OPEN_DST 1
 
 struct file_s {
 	int isdir;
@@ -36,41 +39,67 @@ void show_usage()
 	exit(EXIT_FAILURE);
 }
 
-void do_copy(struct file_s *src, struct file_s *dst)
+int file_open(char *filename, struct stat *fs, int is_dst)
 {
 	int fd;
-	struct stat     fs;
-	char   *file;
-#ifdef DEBUG
-	printf("%p->%p\n",src,dst);
-#endif
+	fd = open(filename,
+			//writable ? O_CREAT|O_TRUNC|S_IWRITE : O_RDONLY,
+			is_dst ? O_CREAT|O_TRUNC|O_RDWR : O_RDONLY,
+			is_dst ? S_IRUSR|S_IWUSR : 0);
+	if (fd < 0) {
+		perror(filename);
+		exit(-1);
+	}
+
+	if (fstat(fd, fs) < 0) {
+		perror("fstat");
+		exit(-1);
+	}
+	return fd;
+}
+
+void file_munmap(int fd, void *mmap_addr, struct stat *fs)
+{
+	munmap(mmap_addr, fs->st_size);
+	close(fd);
+}
+
+void do_copy(struct file_s *src, struct file_s *dst)
+{
+	int fdsrc, fddst;
+	struct stat fssrc,fsdst;
+	char *msrc, *mdst;
 	if (src == NULL||dst == NULL) return;
 #ifdef DEBUG
 	printf("'%s'(%d)->'%s'(%d)\n",src->path,src->isdir,dst->path,dst->isdir);
 #endif
-	fd = open(src->path, O_RDONLY);
-	if (fd < 0) {
-		perror(src->path);
+	fdsrc = file_open(src->path, &fssrc, OPEN_SRC);
+	fddst = file_open(dst->path, &fsdst, OPEN_DST);
+
+	msrc = mmap(NULL, fssrc.st_size, PROT_READ, MAP_SHARED, fdsrc, 0);
+	if (msrc == MAP_FAILED) {
+		perror("mmap src");
+		exit(-1);
+	}
+	if (ftruncate(fddst,fssrc.st_size) != 0)
+	{
+		perror("ftruncate");
+	}
+	mdst = mmap(NULL, fssrc.st_size, PROT_WRITE, MAP_SHARED, fddst, 0);
+	if (mdst == MAP_FAILED) {
+		perror("mmap dst");
 		exit(-1);
 	}
 
-	if (fstat(fd, &fs) < 0) {
-		perror("fstat");
-		exit(-1);
+	long long remain_size = fssrc.st_size;
+
+	while (remain_size--)
+	{
+		*mdst++ = *msrc++;
 	}
-
-	file = mmap(NULL, fs.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-	if (file == MAP_FAILED) {
-		perror("mmap");
-		exit(-1);
-	}
-
-
-	long long remain_size = fs.st_size;
-
-	char *p = NULL;
-	//memcpy
-	close(fd);
+	
+	file_munmap(fdsrc,msrc,&fssrc);
+	file_munmap(fddst,mdst,&fsdst);
 }
 
 int main(int argc, char *argv[])
@@ -189,15 +218,15 @@ int main(int argc, char *argv[])
 	else {
 		for (i=0; i<nsrc; ++i)
 		{
-			char *dst_filename;
 			// dstがディレクトリなら、dst_filename=dst_dir/basename(src_path)
 			if (dst->isdir == 1)
 			{
 #ifdef DEBUG
 				printf("dst is directory %s\n",dst->path);
 #endif
-				char *dirc, *basec, *bname, *dname;
-				char *tmp;
+				//char *dirc,  *dname;
+				char *basec, *bname;
+				//char *tmp;
 				//dirc = strdup(src[i]->path);
 				basec = strdup(src[i]->path);
 				//dname = dirname(dirc);
@@ -208,20 +237,20 @@ int main(int argc, char *argv[])
 				struct file_s *dsttmp;
 				dsttmp = malloc(sizeof(struct file_s));
 				char dst_filename[PATH_MAX];
-				dsttmp->path = &dst_filename;
+				dsttmp->path = dst_filename;
 				strncpy(dsttmp->path,dst->path,PATH_MAX);
 				dsttmp->isdir = dst->isdir;
 
 				char *pathdup = strdup(dsttmp->path);
 				snprintf(dsttmp->path,dst_filename_size,"%s/%s",pathdup,bname);
 				char dst_realpath[PATH_MAX];
-				realpath(dsttmp->path,&dst_realpath);
-				dsttmp->path = &dst_realpath;
+				realpath(dsttmp->path,dst_realpath);
+				dsttmp->path = dst_realpath;
 				free(pathdup); // strdup
 				free(basec); // strdup
 	
 				do_copy(src[i],dsttmp);
-				free(tmp); // realloc
+				//free(tmp); // realloc
 				free(dsttmp); // realloc
 			}
 		}
