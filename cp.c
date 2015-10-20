@@ -8,6 +8,7 @@
 #include <openssl/sha.h>
 #include <getopt.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <limits.h>
 #include <sys/types.h>
@@ -16,11 +17,14 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <libgen.h>
+#include "crc32c.c"
 
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define OPEN_SRC 0
 #define OPEN_DST 1
+#define SIZE (262144*3)
+#define CHUNK SIZE
 
 struct file_s {
 	int isdir;
@@ -58,14 +62,38 @@ int file_open(char *filename, struct stat *fs, int is_dst)
 	return fd;
 }
 
-void file_munmap(int fd, void *mmap_addr, struct stat *fs)
+uint32_t file_crc32c(int fd, size_t fs, void *map)
 {
-	munmap(mmap_addr, fs->st_size);
-	close(fd);
+	size_t off, n;
+	uint32_t crc=0;
+	int flag_map_addr_given = 1;
+	if (map == NULL)
+	{
+		map = mmap(NULL, fs, PROT_READ, MAP_SHARED, fd, 0);
+		flag_map_addr_given = 0;
+		if (map == MAP_FAILED) {
+			perror("mmap crc");
+			exit(-1);
+		}
+	}
+	long long remain_size = fs;
+	for (off=0;remain_size>0; remain_size -= CHUNK)
+	{
+		n = CHUNK;
+		if (remain_size < CHUNK)
+			n = remain_size;
+//		printf("remain_size=%d mdst=%p off=%d n=%d\n",remain_size,mdst,off,n);
+		crc = crc32c(crc,map + off,n);
+		off += n;
+	}
+	if (flag_map_addr_given == 0)
+		munmap(map,fs);
+	return crc;
 }
 
-void do_copy(struct file_s *src, struct file_s *dst)
+int do_copy(struct file_s *src, struct file_s *dst)
 {
+	int crc_match = 0;
 	int fdsrc, fddst;
 	struct stat fssrc,fsdst;
 	char *msrc, *mdst;
@@ -93,13 +121,42 @@ void do_copy(struct file_s *src, struct file_s *dst)
 
 	long long remain_size = fssrc.st_size;
 
+	char *tmp_msrc, *tmp_mdst;
+	tmp_msrc = msrc;
+	tmp_mdst = mdst;
 	while (remain_size--)
 	{
-		*mdst++ = *msrc++;
+		*tmp_mdst++ = *tmp_msrc++;
+	}
+
+	// destroy the data if ERRORTEST defined
+	// for test a crc
+#ifdef ERRORTEST
+	mdst[0] = ~mdst[0];
+#endif
+
+	if (msync(mdst,fssrc.st_size,MS_SYNC) != 0)
+	{
+		perror("msync");
+		exit(-1);
 	}
 	
-	file_munmap(fdsrc,msrc,&fssrc);
-	file_munmap(fddst,mdst,&fsdst);
+	munmap(mdst, fssrc.st_size);
+
+	if (option.paranoid)
+	{
+		uint32_t src_crc = file_crc32c(fdsrc,fssrc.st_size,msrc);
+		uint32_t dst_crc = file_crc32c(fddst,fssrc.st_size,NULL);
+		if (src_crc == dst_crc)
+			crc_match = 1;
+		else
+			crc_match = -1;
+	}
+
+	munmap(msrc, fssrc.st_size);
+	close(fdsrc);
+	close(fddst);
+	return crc_match;
 }
 
 int main(int argc, char *argv[])
@@ -213,7 +270,10 @@ int main(int argc, char *argv[])
 #ifdef DEBUG
 		printf("src is single file\n");
 #endif
-		do_copy(src[0],dst);
+		if (do_copy(src[0],dst) == -1)
+		{
+			fprintf(stderr,"'%s'->'%s' CRC doesn't match\n",src[0]->path,dst->path);
+		}
 	}
 	else {
 		for (i=0; i<nsrc; ++i)
@@ -249,7 +309,10 @@ int main(int argc, char *argv[])
 				free(pathdup); // strdup
 				free(basec); // strdup
 	
-				do_copy(src[i],dsttmp);
+				if (do_copy(src[i],dsttmp) == -1)
+				{
+					fprintf(stderr,"'%s'->'%s' CRC doesn't match\n",src[i]->path,dsttmp->path);
+				}
 				//free(tmp); // realloc
 				free(dsttmp); // realloc
 			}

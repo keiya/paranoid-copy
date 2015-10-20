@@ -1,0 +1,10 @@
+static void crc32c_init_sw(void);
+static uint32_t crc32c_sw(uint32_t crci, const void *buf, size_t len);
+static inline uint32_t gf2_matrix_times(uint32_t *mat, uint32_t vec);
+static inline void gf2_matrix_square(uint32_t *square, uint32_t *mat);
+static void crc32c_zeros_op(uint32_t *even, size_t len);
+static void crc32c_zeros(uint32_t zeros[][256], size_t len);
+static inline uint32_t crc32c_shift(uint32_t zeros[][256], uint32_t crc);
+static void crc32c_init_hw(void);
+static uint32_t crc32c_hw(uint32_t crc, const void *buf, size_t len);
+uint32_t crc32c(uint32_t crc, const void *buf, size_t len);
