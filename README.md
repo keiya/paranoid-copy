@@ -8,7 +8,7 @@ cp [OPTION]... SOURCE... DIRECTORY
 ```
 ### Option
 * `-c` : paranoid mode
-  * verify file copy by using hashing algorithm.
+  * verify the equality of copied file and original file.
 
 ## Build
 just type `make`.
