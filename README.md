@@ -1,5 +1,6 @@
 paranoid copy tool
 ==================
+A Robust Copy Tool for Paranoids. This `cp` provides complete-exact-perfect file copying.
 ## Usage
 ```
 cp [OPTION]... SOURCE DEST
