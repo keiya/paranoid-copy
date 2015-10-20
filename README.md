@@ -1,5 +1,11 @@
 paranoid copy tool
 ==================
+## Usage
+```
+cp [OPTION]... SOURCE DEST
+cp [OPTION]... SOURCE... DIRECTORY
+```
+### Option
 * `-c` : paranoid mode
   * verify file copy by using hashing algorithm.
 
