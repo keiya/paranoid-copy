@@ -37,6 +37,12 @@ struct option_s {
 };
 struct option_s option;
 
+void error_exit(int er)
+{
+	perror("error");
+	exit(er);
+}
+
 void show_usage()
 {
 	printf("RTFM!!!!!!!!!!! read the f___ing manual!!!!!!!\n");
@@ -196,15 +202,17 @@ int main(int argc, char *argv[])
 	if (argc-optind >= 2)
 	{
 		nsrc = argc-optind-1;
-		//src_path = malloc(sizeof(char*) * argc-optind-1);
 		src = malloc(sizeof(struct file_s*) * argc-optind-1);
+		if (src == NULL) error_exit(-ENOMEM);
 		for (i=optind; i<argc; ++i)
 		{
 			int size_path = MIN(strlen(argv[i]),PATH_MAX);
 			if (i==argc-1)
 			{
 				dst = malloc(sizeof(struct file_s));
+				if (dst == NULL) error_exit(-ENOMEM);
 				dst->path = malloc(size_path);
+				if (dst->path == NULL) error_exit(-ENOMEM);
 				if (stat(argv[i],&stat_buf) == 0)
 				{
 				
@@ -243,6 +251,7 @@ int main(int argc, char *argv[])
 				{
 					int idx = i-optind;
 					src[idx] = malloc(sizeof(struct file_s));
+					if (src[idx] == NULL) error_exit(-ENOMEM);
 					if (S_ISDIR(stat_buf.st_mode))
 					{
 						if (option.recursive == 0)
@@ -255,6 +264,7 @@ int main(int argc, char *argv[])
 					//src_path[idx] = malloc(size_dst);
 
 					src[idx]->path = malloc(size_path);
+					if (src[idx]->path == NULL) error_exit(-ENOMEM);
 					strncpy(src[idx]->path,argv[i],size_path);
 				}
 			}
@@ -296,6 +306,7 @@ int main(int argc, char *argv[])
 				// copy struct files*
 				struct file_s *dsttmp;
 				dsttmp = malloc(sizeof(struct file_s));
+				if (dsttmp == NULL) error_exit(-ENOMEM);
 				char dst_filename[PATH_MAX];
 				dsttmp->path = dst_filename;
 				strncpy(dsttmp->path,dst->path,PATH_MAX);
