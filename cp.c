@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <libgen.h>
+#include <errno.h>
 #include "crc32c.c"
 
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
@@ -307,14 +308,14 @@ int main(int argc, char *argv[])
 				struct file_s *dsttmp;
 				dsttmp = malloc(sizeof(struct file_s));
 				if (dsttmp == NULL) error_exit(-ENOMEM);
-				char dst_filename[PATH_MAX];
+				char dst_filename[PATH_MAX+1];
 				dsttmp->path = dst_filename;
 				strncpy(dsttmp->path,dst->path,PATH_MAX);
 				dsttmp->isdir = dst->isdir;
 
 				char *pathdup = strdup(dsttmp->path);
 				snprintf(dsttmp->path,dst_filename_size,"%s/%s",pathdup,bname);
-				char dst_realpath[PATH_MAX];
+				char dst_realpath[PATH_MAX+1];
 				realpath(dsttmp->path,dst_realpath);
 				dsttmp->path = dst_realpath;
 				free(pathdup); // strdup
